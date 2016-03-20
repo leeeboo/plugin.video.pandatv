@@ -6,11 +6,16 @@
 # Largely following the example at 
 # https://github.com/romanvm/plugin.video.example/blob/master/main.py
 import xbmc,xbmcgui,urllib2,re,xbmcplugin
-from BeautifulSoup import BeautifulSoup
 from urlparse import parse_qsl
 import sys
 import json
 
+def post(url, data):
+    req = urllib2.Request(url)
+    #enable cookie
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
+    response = opener.open(req, data)
+    return response.read()
 
 # Get the plugin url in plugin:// notation.
 _url=sys.argv[0]
@@ -18,71 +23,64 @@ _url=sys.argv[0]
 _handle=int(sys.argv[1])
 
 def list_categories():
-    f=urllib2.urlopen('http://www.panda.tv/cate')
-    rr=BeautifulSoup(f.read())
-    catel=rr.findAll('li',{'class':'category-list-item'})
-    rrr=[(x.a['class'], x.a['title']) for x in catel]
+
+    f = urllib2.urlopen('http://api.m.panda.tv/ajax_get_all_subcate?__version=1.0.5.1098&__plat=iOS')
+
+    obj = json.loads(f.read())
+
     listing=[]
-    for classname,text in rrr:
-        img=rr.find('img',{'alt':text})['src']
-        list_item=xbmcgui.ListItem(label=text,thumbnailImage=img)
-        list_item.setProperty('fanart_image',img)
-        url='{0}?action=listing&category={1}'.format(_url,classname)
+    for game in obj['data']:
+        list_item = xbmcgui.ListItem(label=game['cname'], thumbnailImage=game['img'])
+        list_item.setProperty('fanart_image', game['img'])
+        url='{0}?action=room_list&game_id={1}'.format(_url, game['ename'])
+
+        xbmc.log(url, 1)
+
         is_folder=True
-        listing.append((url,list_item,is_folder))
+        listing.append((url, list_item, is_folder))
+
     xbmcplugin.addDirectoryItems(_handle,listing,len(listing))
     #xbmcplugin.addSortMethod(_handle, xbmcplugin.SORT_METHOD_LABEL_IGNORE_THE)
     # Finish creating a virtual folder.
-    xbmcplugin.endOfDirectory(_handle) 
+    xbmcplugin.endOfDirectory(_handle)
 
-def list_videos(category):
-    f=urllib2.urlopen('http://www.panda.tv/cate/'+category)
-    rr=BeautifulSoup(f.read())
-    videol=rr.findAll('a',{'class':'video-list-item-inner'})
-    rrr=[(x['href'][1:],x.img,x.findNextSibling('div',{'class':'live-info'})) for x in videol]
+
+def room_list(game_id):
+
+    apiurl = "http://api.m.panda.tv/ajax_get_live_list_by_cate";
+    params = "__plat=iOS&__version=1.0.5.1098&cate={ename}&order=person_num&pageno=1&pagenum=100&status=2".format(ename=game_id)
+
+    returndata = post(apiurl, params);
+
+    obj = json.loads(returndata)
+
     listing=[]
-    for roomid,image,liveinfo in rrr:
-        img=image['src']
-        roomname=image['alt']
-        nickname=liveinfo.find('span',{'class':'nick-name'}).text
-        peoplenumber=liveinfo.find('span',{'class':'people-number'}).text
-
-        combinedname=u'{0}:{1}:{2}'.format(nickname,roomname,peoplenumber)
-        list_item=xbmcgui.ListItem(label=combinedname,thumbnailImage=img)
-        list_item.setProperty('fanart_image',img)
-        url='{0}?action=play&video={1}'.format(_url,roomid)
+    for room in obj['data']['items']:
+        list_item = xbmcgui.ListItem(label=room['name'], thumbnailImage=room['pictures']['img'])
+        list_item.setProperty('fanart_image', room['pictures']['img'])
+        url='{0}?action=play&room_id={1}'.format(_url, room['id'])
         is_folder=False
-        listing.append((url,list_item,is_folder))
-    xbmcplugin.addDirectoryItems(_handle,listing,len(listing))
+        listing.append((url, list_item, is_folder))
+    xbmcplugin.addDirectoryItems(_handle, listing, len(listing))
     #xbmcplugin.addSortMethod(_handle, xbmcplugin.SORT_METHOD_LABEL_IGNORE_THE)
     # Finish creating a virtual folder.
-    xbmcplugin.endOfDirectory(_handle) 
+    xbmcplugin.endOfDirectory(_handle)
 
-
-def play_video(roomid):
+def play_video(room_id):
     """
     Play a video by the provided path.
     :param path: str
     :return: None
     """
-    f=urllib2.urlopen('http://www.panda.tv/api_room?roomid='+roomid)
-    r=f.read()
-    ss=json.loads(r)
-    hostname=ss['data']['hostinfo']['name']
-    roomname=ss['data']['roominfo']['name']
-    #s=re.search('''"room_key":"(.*?)"''',r).group(1)
-    s=ss['data']['videoinfo']['room_key']
-    img=ss['data']['hostinfo']['avatar']
-    combinedname=u'{0}:{1}'.format(hostname,roomname)
-    # Create a playable item with a path to play.
-    path='http://pl3.live.panda.tv/live_panda/{0}.flv'.format(s)
-    play_item = xbmcgui.ListItem(path=path,thumbnailImage=img)
-    play_item.setInfo(type="Video",infoLabels={"Title":combinedname})
+    f = urllib2.urlopen('http://www.panda.tv/api_room?roomid={room_id}'.format(room_id=room_id))
+    obj = json.loads(f.read())
+    path = 'http://pl3.live.panda.tv/live_panda/{video}.flv'.format(video=obj['data']['videoinfo']['room_key'])
+    play_item = xbmcgui.ListItem(path=path, thumbnailImage=obj['data']['hostinfo']['avatar'])
+    play_item.setInfo(type="Video", infoLabels={"Title":obj['data']['roominfo']['name']})
     # Pass the item to the Kodi player.
     xbmcplugin.setResolvedUrl(_handle, True, listitem=play_item)
     # directly play the item.
     xbmc.Player().play(path, play_item)
- 
 
 def router(paramstring):
     """
@@ -96,12 +94,12 @@ def router(paramstring):
     params = dict(parse_qsl(paramstring))
     # Check the parameters passed to the plugin
     if params:
-        if params['action'] == 'listing':
+        if params['action'] == 'room_list':
             # Display the list of videos in a provided category.
-            list_videos(params['category'])
+            room_list(params['game_id'])
         elif params['action'] == 'play':
             # Play a video from a provided URL.
-            play_video(params['video'])
+            play_video(params['room_id'])
     else:
         # If the plugin is called from Kodi UI without any parameters,
         # display the list of video categories
