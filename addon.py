@@ -72,7 +72,11 @@ def play_video(room_id):
     """
     f = urllib2.urlopen('http://www.panda.tv/api_room?roomid={room_id}'.format(room_id=room_id))
     obj = json.loads(f.read())
-    path = 'http://pl3.live.panda.tv/live_panda/{video}.flv'.format(video=obj['data']['videoinfo']['room_key'])
+
+    if room_id == 12311:
+        path = 'http://pl3.live.panda.tv/live_panda/{video}.flv'.format(video=obj['data']['videoinfo']['room_key'])
+    else:
+        path = 'http://pl-hls10.live.panda.tv/live_panda/{video}.m3u8'.format(video=obj['data']['videoinfo']['room_key'])
     play_item = xbmcgui.ListItem(path=path, thumbnailImage=obj['data']['hostinfo']['avatar'])
     play_item.setInfo(type="Video", infoLabels={"Title":obj['data']['roominfo']['name']})
     # Pass the item to the Kodi player.
